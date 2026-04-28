@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WalkWorld 3D — Multiplayer</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap" rel="stylesheet" />
+</head>
+<body class="login-page">
+
+  <div class="bg-grid"></div>
+  <div class="floating-pixels" aria-hidden="true">
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+  </div>
+
+  <main class="login-container">
+    <div class="login-card">
+
+      <div class="logo-block">
+        <div class="logo-icon">🌍</div>
+        <h1 class="logo-title">WalkWorld 3D</h1>
+        <p class="logo-sub">Multiplayer · 3D · Free</p>
+      </div>
+
+      <div class="login-form">
+        <label class="field-label" for="playerName">YOUR NAME</label>
+        <input
+          id="playerName"
+          class="name-input"
+          type="text"
+          maxlength="16"
+          placeholder="Enter name..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="char-count"><span id="charCount">0</span>/16</div>
+
+        <label class="field-label" for="colorPicker">PICK COLOUR</label>
+        <div class="color-row" id="colorPicker" role="group" aria-label="Pick a player colour"></div>
+
+        <button class="join-btn" id="joinBtn" disabled>
+          <span class="btn-text">ENTER WORLD</span>
+          <span class="btn-arrow">▶</span>
+        </button>
+
+        <p class="online-count">
+          <span class="dot-pulse"></span>
+          <span id="onlineCount">—</span> players online
+        </p>
+      </div>
+
+    </div>
+
+    <div class="howto-card">
+      <h2 class="howto-title">HOW TO PLAY</h2>
+      <ul class="howto-list">
+        <li><kbd>W A S D</kbd> to move</li>
+        <li><kbd>Mouse</kbd> to look around</li>
+        <li><kbd>Space</kbd> to jump</li>
+        <li><kbd>T</kbd> to chat &nbsp;·&nbsp; <kbd>ESC</kbd> to unlock mouse</li>
+      </ul>
+    </div>
+  </main>
+
+  <script src="js/firebase-config.js" type="module"></script>
+  <script type="module">
+    import { getPlayerCount } from './js/network.js';
+
+    const nameInput = document.getElementById('playerName');
+    const charCount = document.getElementById('charCount');
+    const joinBtn   = document.getElementById('joinBtn');
+    const countEl   = document.getElementById('onlineCount');
+
+    const COLOURS = ['#ff4757','#ffa502','#eccc68','#2ed573','#1e90ff','#a29bfe','#fd79a8','#ffffff'];
+    let selectedColour = COLOURS[Math.floor(Math.random() * COLOURS.length)];
+    const picker = document.getElementById('colorPicker');
+
+    COLOURS.forEach(c => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch' + (c === selectedColour ? ' active' : '');
+      btn.style.setProperty('--sw', c);
+      btn.setAttribute('aria-label', c);
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        selectedColour = c;
+      });
+      picker.appendChild(btn);
+    });
+
+    nameInput.addEventListener('input', () => {
+      charCount.textContent = nameInput.value.length;
+      joinBtn.disabled = nameInput.value.trim().length < 1;
+    });
+
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !joinBtn.disabled) joinBtn.click();
+    });
+
+    joinBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      sessionStorage.setItem('playerName',   name);
+      sessionStorage.setItem('playerColour', selectedColour);
+      window.location.href = 'game.html';
+    });
+
+    try {
+      getPlayerCount(n => { countEl.textContent = n; });
+    } catch (_) {
+      countEl.textContent = '?';
+    }
+  </script>
+</body>
+</html>
