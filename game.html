@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/game.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;family=VT323:wght@400&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap" rel="stylesheet">
 </head>
 <body class="game-page">
 
@@ -271,17 +271,24 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════
+         HELD ITEM  (bottom-right, first-person 3D view)
+         ══════════════════════════════════════════════════ -->
+    <div id="heldItemWrap" class="held-item-wrap" aria-hidden="true">
+      <canvas id="heldItemCanvas" width="280" height="240"></canvas>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
          HOTBAR  (bottom centre — press 1 / 2 to switch)
          ══════════════════════════════════════════════════ -->
     <div class="hotbar" id="hotbar" aria-label="Item hotbar">
       <div class="hotbar-slot active" id="hotbarSlot1" data-slot="1" title="Shovel [1]">
         <div class="hotbar-slot-key">1</div>
-        <div class="hotbar-slot-icon">⛏️</div>
+        <canvas class="hotbar-slot-canvas" id="itemCanvas1" width="44" height="44"></canvas>
         <div class="hotbar-slot-label">Shovel</div>
       </div>
       <div class="hotbar-slot" id="hotbarSlot2" data-slot="2" title="Item Detector [2]">
         <div class="hotbar-slot-key">2</div>
-        <div class="hotbar-slot-icon">📡</div>
+        <canvas class="hotbar-slot-canvas" id="itemCanvas2" width="44" height="44"></canvas>
         <div class="hotbar-slot-label">Detector</div>
       </div>
     </div>
@@ -305,6 +312,7 @@
         '1': document.getElementById('hotbarSlot1'),
         '2': document.getElementById('hotbarSlot2'),
       };
+      const heldWrap = document.getElementById('heldItemWrap');
 
       let activeSlot = '1';
 
@@ -313,18 +321,251 @@
         SLOTS[activeSlot].classList.remove('active');
         SLOTS[key].classList.add('active');
         activeSlot = key;
-        // Expose for other scripts: window.HOTBAR_SLOT = '1' | '2'
         window.HOTBAR_SLOT = key;
+        // Quick lower-and-raise animation on switch
+        if (heldWrap) {
+          heldWrap.classList.remove('switching');
+          void heldWrap.offsetWidth; // reflow
+          heldWrap.classList.add('switching');
+        }
       }
 
       window.HOTBAR_SLOT = activeSlot;
 
       window.addEventListener('keydown', function (e) {
-        // Only fire when NOT typing in an input / chat
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.code === 'Digit1') selectSlot('1');
         if (e.code === 'Digit2') selectSlot('2');
       });
+    })();
+  </script>
+
+  <!-- ── 3-D item renderer (hotbar icons + held-item view) ── -->
+  <script>
+    (function () {
+      function init3DItems() {
+        if (typeof THREE === 'undefined') return;
+
+        const SLOT_W = 44, SLOT_H = 44;
+        const HELD_W = 280, HELD_H = 240;
+
+        // Single shared off-screen renderer
+        const renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setPixelRatio(1); // keep fixed for blit accuracy
+        renderer.setClearColor(0x000000, 0);
+
+        // ── Shared lights helper ─────────────────────────────
+        function addLights(scene) {
+          scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+          const d1 = new THREE.DirectionalLight(0x00f5c4, 1.1); // teal key
+          d1.position.set(2, 3, 4);
+          scene.add(d1);
+          const d2 = new THREE.DirectionalLight(0x7c6cf7, 0.45); // purple fill
+          d2.position.set(-2, 1, -2);
+          scene.add(d2);
+          const d3 = new THREE.DirectionalLight(0xffffff, 0.3);  // white rim
+          d3.position.set(0, -2, -3);
+          scene.add(d3);
+        }
+
+        // ════════════════════════════════════════════════════
+        //  SHOVEL  (wood handle + steel blade)
+        //  Palette matches objects.js: trunk=0x8b5e2e, rockGrey=0x707880
+        // ════════════════════════════════════════════════════
+        const shovelScene = new THREE.Scene();
+        addLights(shovelScene);
+        const shovelGroup = new THREE.Group();
+
+        const mWood     = new THREE.MeshLambertMaterial({ color: 0x8b5e2e });
+        const mDarkWood = new THREE.MeshLambertMaterial({ color: 0x5a3010 });
+        const mSteel    = new THREE.MeshLambertMaterial({ color: 0xa8b2bc });
+        const mDarkStl  = new THREE.MeshLambertMaterial({ color: 0x707880 });
+
+        // Grip cap
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.18), mDarkWood);
+        grip.position.y = 0.84;
+        shovelGroup.add(grip);
+
+        // Handle shaft
+        const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.0, 0.10), mWood);
+        shaft.position.y = 0.28;
+        shovelGroup.add(shaft);
+
+        // Collar (metal band where handle meets blade)
+        const collar = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.13), mDarkStl);
+        collar.position.y = -0.22;
+        shovelGroup.add(collar);
+
+        // Blade main face
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.06), mSteel);
+        blade.position.y = -0.35;
+        shovelGroup.add(blade);
+
+        // Blade lower taper (3 stacked boxes narrowing to a point)
+        const bMid = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.06), mSteel);
+        bMid.position.y = -0.46;
+        shovelGroup.add(bMid);
+
+        const bTip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.06), mSteel);
+        bTip.position.y = -0.56;
+        shovelGroup.add(bTip);
+
+        // Highlight strip on blade face
+        const bShine = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.30, 0.02), new THREE.MeshLambertMaterial({ color: 0xd8e0e8 }));
+        bShine.position.set(-0.14, -0.41, 0.04);
+        shovelGroup.add(bShine);
+
+        shovelGroup.rotation.z = 0.18;
+        shovelScene.add(shovelGroup);
+
+        // Cameras for shovel
+        const shovelSlotCam = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
+        shovelSlotCam.position.set(0.55, 0.25, 2.1);
+        shovelSlotCam.lookAt(0, 0.05, 0);
+
+        const shovelHeldCam = new THREE.PerspectiveCamera(52, HELD_W / HELD_H, 0.1, 50);
+        shovelHeldCam.position.set(0.65, -0.85, 1.7);
+        shovelHeldCam.lookAt(-0.05, 0.55, 0);
+
+        // ════════════════════════════════════════════════════
+        //  ITEM DETECTOR  (handheld scanner device)
+        //  Body dark navy + teal screen + purple indicator lights
+        // ════════════════════════════════════════════════════
+        const detScene = new THREE.Scene();
+        addLights(detScene);
+        const detGroup = new THREE.Group();
+
+        const mBody   = new THREE.MeshLambertMaterial({ color: 0x1a1c2e });
+        const mPanel  = new THREE.MeshLambertMaterial({ color: 0x252840 });
+        const mScreen = new THREE.MeshLambertMaterial({ color: 0x00f5c4, emissive: new THREE.Color(0x00f5c4), emissiveIntensity: 0.65 });
+        const mAnt    = new THREE.MeshLambertMaterial({ color: 0x606880 });
+        const mTeal   = new THREE.MeshLambertMaterial({ color: 0x00f5c4, emissive: new THREE.Color(0x00f5c4), emissiveIntensity: 1.0 });
+        const mPurp   = new THREE.MeshLambertMaterial({ color: 0x7c6cf7, emissive: new THREE.Color(0x7c6cf7), emissiveIntensity: 0.85 });
+
+        // Main body
+        const devBody = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.17), mBody);
+        detGroup.add(devBody);
+
+        // Front face panel
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.02), mPanel);
+        panel.position.set(0, 0, 0.095);
+        detGroup.add(panel);
+
+        // Screen (teal glow)
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.02), mScreen);
+        screen.position.set(0, 0.02, 0.11);
+        detGroup.add(screen);
+
+        // Scanline effect on screen (darker strip)
+        const scanline = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.015), new THREE.MeshLambertMaterial({ color: 0x003d32 }));
+        scanline.position.set(0, 0.0, 0.115);
+        detGroup.add(scanline);
+
+        // 3 indicator lights bottom of face
+        [-0.10, 0, 0.10].forEach((x, i) => {
+          const m = i === 1 ? mTeal : mPurp;
+          const dot = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02), m);
+          dot.position.set(x, -0.085, 0.11);
+          detGroup.add(dot);
+        });
+
+        // Side grip ridges (left side)
+        [-0.05, 0, 0.05].forEach(z => {
+          const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.035), mPanel);
+          ridge.position.set(-0.21, 0, z);
+          detGroup.add(ridge);
+        });
+
+        // Antenna base
+        const antBase = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.07), mAnt);
+        antBase.position.set(0.12, 0.16, 0.01);
+        detGroup.add(antBase);
+
+        // Antenna shaft
+        const antShaft = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.03), mAnt);
+        antShaft.position.set(0.12, 0.31, 0.01);
+        detGroup.add(antShaft);
+
+        // Antenna tip (teal glow)
+        const antTip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), mTeal);
+        antTip.position.set(0.12, 0.445, 0.01);
+        detGroup.add(antTip);
+
+        detGroup.rotation.y = 0.28;
+        detGroup.rotation.x = -0.18;
+        detScene.add(detGroup);
+
+        // Cameras for detector
+        const detSlotCam = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
+        detSlotCam.position.set(0.5, 0.3, 1.7);
+        detSlotCam.lookAt(0, 0.02, 0);
+
+        const detHeldCam = new THREE.PerspectiveCamera(52, HELD_W / HELD_H, 0.1, 50);
+        detHeldCam.position.set(0.55, -0.38, 1.5);
+        detHeldCam.lookAt(-0.02, 0.08, 0);
+
+        // ── Target canvases ──────────────────────────────────
+        const canvas1    = document.getElementById('itemCanvas1');
+        const canvas2    = document.getElementById('itemCanvas2');
+        const heldCanvas = document.getElementById('heldItemCanvas');
+        if (!canvas1 || !canvas2 || !heldCanvas) return;
+
+        const ctx1 = canvas1.getContext('2d');
+        const ctx2 = canvas2.getContext('2d');
+        const ctxH = heldCanvas.getContext('2d');
+
+        // Blit renderer domElement → 2D canvas
+        function blit(ctx, w, h) {
+          ctx.clearRect(0, 0, w, h);
+          ctx.drawImage(renderer.domElement, 0, 0, w, h);
+        }
+
+        // ── Animation loop ───────────────────────────────────
+        let _scanY = 0; // scanline position for detector screen
+        function animate(t) {
+          requestAnimationFrame(animate);
+          const s = t * 0.001;
+
+          // Idle gentle sway
+          shovelGroup.rotation.y = Math.sin(s * 0.5) * 0.10;
+
+          // Detector antenna tip pulse & idle rotate
+          detGroup.rotation.y = 0.28 + Math.sin(s * 0.45) * 0.10;
+          // Move scanline up/down on screen
+          _scanY = Math.sin(s * 1.8) * 0.04;
+          scanline.position.y = _scanY;
+
+          // ── Render slot 1 (shovel, 44×44) ──
+          renderer.setSize(SLOT_W, SLOT_H, false);
+          renderer.render(shovelScene, shovelSlotCam);
+          blit(ctx1, SLOT_W, SLOT_H);
+
+          // ── Render slot 2 (detector, 44×44) ──
+          renderer.render(detScene, detSlotCam);
+          blit(ctx2, SLOT_W, SLOT_H);
+
+          // ── Render held item (280×240, first-person camera) ──
+          const slot   = window.HOTBAR_SLOT || '1';
+          const hScene = slot === '1' ? shovelScene : detScene;
+          const hCam   = slot === '1' ? shovelHeldCam : detHeldCam;
+          renderer.setSize(HELD_W, HELD_H, false);
+          renderer.render(hScene, hCam);
+          blit(ctxH, HELD_W, HELD_H);
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      // THREE.js loads synchronously above — guard anyway
+      if (typeof THREE !== 'undefined') {
+        init3DItems();
+      } else {
+        window.addEventListener('load', init3DItems);
+      }
     })();
   </script>
 
