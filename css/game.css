@@ -845,11 +845,13 @@
   transition: color .15s;
 }
 
-/* Tool icon */
-.hotbar-slot-icon {
-  font-size: 24px;
-  line-height: 1;
-  filter: grayscale(35%);
+/* Tool icon — 3D canvas render */
+.hotbar-slot-canvas {
+  display: block;
+  width: 44px;
+  height: 44px;
+  image-rendering: pixelated;
+  filter: brightness(0.82) saturate(0.9);
   transition: filter .15s, transform .15s;
 }
 
@@ -878,9 +880,9 @@
   color: var(--c-accent);
 }
 
-.hotbar-slot.active .hotbar-slot-icon {
-  filter: grayscale(0%) drop-shadow(0 0 4px rgba(0,245,196,.45));
-  transform: scale(1.08);
+.hotbar-slot.active .hotbar-slot-canvas {
+  filter: brightness(1.15) saturate(1.2) drop-shadow(0 0 5px rgba(0,245,196,.5));
+  transform: scale(1.06);
 }
 
 .hotbar-slot.active .hotbar-slot-label {
@@ -889,7 +891,49 @@
 
 /* ── Mobile: slightly smaller ── */
 @media (max-width: 540px) {
-  .hotbar-slot        { width: 52px; height: 58px; }
-  .hotbar-slot-icon   { font-size: 20px; }
-  .hotbar-slot-label  { font-size: 4.5px; }
+  .hotbar-slot         { width: 52px; height: 58px; }
+  .hotbar-slot-canvas  { width: 38px; height: 38px; }
+  .hotbar-slot-label   { font-size: 4.5px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   HELD ITEM  (first-person 3D view, bottom-right)
+   ════════════════════════════════════════════════════════════ */
+
+.held-item-wrap {
+  position: absolute;
+  bottom: 90px;
+  right: 20px;
+  width: 280px;
+  height: 240px;
+  z-index: 8;
+  pointer-events: none;
+  user-select: none;
+  /* Tilt as if held in the player's right hand */
+  transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px);
+  transform-origin: bottom right;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.75));
+  transition: opacity .15s ease;
+}
+
+#heldItemCanvas {
+  display: block;
+  width: 280px;
+  height: 240px;
+  image-rendering: pixelated;
+}
+
+/* Quick lower-and-raise on slot switch */
+@keyframes heldSwitch {
+  0%   { opacity: 0;   transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px) translateY(60px); }
+  100% { opacity: 1;   transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px) translateY(0);   }
+}
+.held-item-wrap.switching {
+  animation: heldSwitch 0.20s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Mobile: shrink held item */
+@media (max-width: 540px) {
+  .held-item-wrap  { width: 180px; height: 154px; bottom: 80px; right: 8px; }
+  #heldItemCanvas  { width: 180px; height: 154px; }
 }
