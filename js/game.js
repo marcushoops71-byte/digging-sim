@@ -170,19 +170,18 @@ async function init() {
   setLoad(50, 'Connecting to server…');
   await tick();
 
-  try {
-    await joinGame({
-      name, colour,
-      x: player.x, y: player.y, z: player.z,
-      rotationY: player.rotationY,
-    });
-  } catch (err) {
-    console.error('[Game] joinGame failed:', err);
-    showDisconnected();
-    return;
+  // joinGame now handles Firebase errors internally and always resolves —
+  // offline-prefixed IDs mean Firebase was unavailable.
+  const _joinId = await joinGame({
+    name, colour,
+    x: player.x, y: player.y, z: player.z,
+    rotationY: player.rotationY,
+  });
+  if (_joinId.startsWith('offline-')) {
+    console.info('[Game] Running in offline mode — Firebase unavailable.');
   }
 
-  // Record join time AFTER successfully connecting
+  // Record join time AFTER connecting (or falling back)
   _chatJoinTime = Date.now();
 
   setLoad(70, 'Syncing players…');
