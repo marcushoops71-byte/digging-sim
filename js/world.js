@@ -1,5 +1,5 @@
 // ============================================================
-//  WalkWorld 3D — world.js
+//  WalkWorld 3D — world.js  (IMPROVED GRAPHICS)
 // ============================================================
 
 export const WORLD_SIZE = 200;
@@ -24,9 +24,9 @@ function makeRng(seed) {
 
 export function getZoneName(x, z) {
   if (x < -25 && z < 18)                      return 'Forest';
-  if (x > 40  && z > 16)                      return 'Lake';
-  if (x > 30  && z < -30)                     return 'Cabin';
-  if (Math.abs(x) <= 22 && Math.abs(z) <= 18) return 'Plaza';
+  if (x > 40  && z > 16)                       return 'Lake';
+  if (x > 30  && z < -30)                      return 'Cabin';
+  if (Math.abs(x) <= 22 && Math.abs(z) <= 18)  return 'Plaza';
   return 'Plains';
 }
 
@@ -85,32 +85,51 @@ export function isBlocked(x, z) {
   return getZoneName(x, z) === 'Lake';
 }
 
+// ── Richer terrain palette ────────────────────────────────────
 function _terrainColour(x, z, h) {
   const zone = getZoneName(x, z);
   switch (zone) {
-    case 'Lake':   return [0.10, 0.34, 0.62];
-    case 'Plaza':  return [0.50, 0.50, 0.56];
-    case 'Cabin':  return [0.52, 0.38, 0.20];
-    case 'Forest': return h > 2.0 ? [0.24, 0.40, 0.16] : [0.18, 0.34, 0.12];
-    default:
-      if (h > 2.8) return [0.60, 0.54, 0.42];
-      if (h > 1.5) return [0.42, 0.62, 0.26];
-      return [0.28, 0.55, 0.20];
+    case 'Lake':
+      return [0.08, 0.30, 0.62];
+    case 'Plaza':
+      return [0.44, 0.44, 0.52];
+    case 'Cabin':
+      return [0.48, 0.34, 0.16];
+    case 'Forest':
+      if (h > 2.4) return [0.20, 0.38, 0.14];
+      return [0.14, 0.30, 0.10];
+    default: // Plains
+      if (h > 3.2) return [0.68, 0.62, 0.48]; // rocky high ground
+      if (h > 1.8) return [0.38, 0.60, 0.22]; // bright mid grass
+      if (h > 0.6) return [0.28, 0.56, 0.18]; // lush low grass
+      return [0.25, 0.50, 0.16];               // very low ground
   }
 }
 
 export function initWorld() {
-  scene.background = new THREE.Color(0x7ec8e3);
-  scene.fog = new THREE.FogExp2(0xa4d4e8, 0.0095);
+  // ── Sky: richer gradient blue ──────────────────────────────
+  scene.background = new THREE.Color(0x5ba8d8);
 
-  scene.add(new THREE.AmbientLight(0xfff0cc, 0.52));
+  // ── Atmospheric fog: slightly denser for depth ─────────────
+  scene.fog = new THREE.FogExp2(0x8ec8e8, 0.0078);
 
-  const sun = new THREE.DirectionalLight(0xfff8e0, 1.05);
-  sun.position.set(70, 130, 55);
+  // ── Ambient: slightly warmer golden-hour tone ─────────────
+  scene.add(new THREE.AmbientLight(0xfff4cc, 0.60));
+
+  // ── Sun: brighter, more golden ────────────────────────────
+  const sun = new THREE.DirectionalLight(0xfffae8, 1.35);
+  sun.position.set(80, 150, 65);
   scene.add(sun);
 
-  scene.add(new THREE.HemisphereLight(0x7ec8e3, 0x3a6e28, 0.38));
+  // ── Sky hemisphere: richer sky-blue / earth-green contrast ─
+  scene.add(new THREE.HemisphereLight(0x7ad4f0, 0x336622, 0.50));
 
+  // ── Subtle fill from opposite side (bounce light) ─────────
+  const fill = new THREE.DirectionalLight(0xc0d8ff, 0.22);
+  fill.position.set(-60, 40, -80);
+  scene.add(fill);
+
+  // ── Build terrain ──────────────────────────────────────────
   _buildHeightmap();
 
   const geoT = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, SEGS, SEGS);
@@ -131,19 +150,32 @@ export function initWorld() {
   posAttr.needsUpdate = true;
   geoT.computeVertexNormals();
   geoT.setAttribute('color', new THREE.BufferAttribute(colBuf, 3));
-  scene.add(new THREE.Mesh(geoT, new THREE.MeshLambertMaterial({ vertexColors: true })));
 
-  const waterMat = new THREE.MeshLambertMaterial({ color: 0x1a6bbf, transparent: true, opacity: 0.80 });
+  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  scene.add(new THREE.Mesh(geoT, terrainMat));
+
+  // ── Water: richer blue, slightly more opaque ──────────────
+  const waterMat = new THREE.MeshLambertMaterial({
+    color: 0x1660c0,
+    transparent: true,
+    opacity: 0.82,
+  });
   _addWater(60, 50, 44, 36, waterMat);
   _addWater(-60, 38, 18, 14, waterMat);
 
+  // ── Underground fill (visible when camera dips low) ───────
   const underGeo = new THREE.PlaneGeometry(WORLD_SIZE + 80, WORLD_SIZE + 80);
   underGeo.rotateX(-Math.PI / 2);
-  const under = new THREE.Mesh(underGeo, new THREE.MeshLambertMaterial({ color: 0x162d10 }));
+  const under = new THREE.Mesh(underGeo, new THREE.MeshLambertMaterial({ color: 0x0e2208 }));
   under.position.y = -5.2;
   scene.add(under);
 
+  // ── Sky dome: large sphere coloured for atmospheric depth ──
+  _buildSkyDome();
+
+  // ── Horizon mountains ─────────────────────────────────────
   _buildHorizon();
+
   return scene;
 }
 
@@ -155,8 +187,55 @@ function _addWater(cx, cz, w, d, mat) {
   scene.add(mesh);
 }
 
+// ── Sky dome: simple large sphere with gradient via vertex colors
+function _buildSkyDome() {
+  const geo = new THREE.SphereGeometry(420, 12, 8);
+  // Flip normals inward
+  geo.scale(-1, 1, 1);
+
+  const posAttr = geo.attributes.position;
+  const colBuf  = new Float32Array(posAttr.count * 3);
+
+  // Sky gradient: top = deep blue, horizon = pale sky
+  const topCol  = new THREE.Color(0x3a7fc8);   // deep sky
+  const midCol  = new THREE.Color(0x8ec8e8);   // mid sky
+  const horizCol = new THREE.Color(0xc4e4f4);  // horizon haze
+
+  for (let i = 0; i < posAttr.count; i++) {
+    const y = posAttr.getY(i);
+    const r = 420;
+    // Normalise: 1 = top, 0 = horizon
+    const t = Math.max(0, Math.min(1, (y + r) / (2 * r)));
+
+    let col;
+    if (t > 0.18) {
+      // lerp topCol → midCol
+      const f = (t - 0.18) / 0.82;
+      col = topCol.clone().lerp(midCol, 1 - f);
+    } else {
+      // lerp midCol → horizCol
+      const f = t / 0.18;
+      col = midCol.clone().lerp(horizCol, 1 - f);
+    }
+    colBuf[i*3]     = col.r;
+    colBuf[i*3 + 1] = col.g;
+    colBuf[i*3 + 2] = col.b;
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(colBuf, 3));
+
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.BackSide,
+    fog: false,
+  });
+  const dome = new THREE.Mesh(geo, mat);
+  dome.position.y = -30;
+  scene.add(dome);
+}
+
 function _buildHorizon() {
-  const mat = new THREE.MeshLambertMaterial({ color: 0x1a3a14 });
+  const mat = new THREE.MeshLambertMaterial({ color: 0x1a4016 });
   const rng = makeRng(0xF00DCAFE);
   const COUNT = 30;
   for (let i = 0; i < COUNT; i++) {
